@@ -972,7 +972,6 @@ const FN_WRAPPER: bool = true;
 
 impl Function {
     fn global(&mut self, lit: &Literal) {
-        println!("Literal: {:?}", lit);
         if let Literal::String(s) = lit {
             self.strings.push(s.clone());
         }
@@ -1119,7 +1118,7 @@ fn main() {
     let tokens = Token::parse(EXAMPLE_SOURCE);
     let token_tree = TokenTree::from_iter(tokens);
     let statements = Statement::from_token_tree(token_tree);
-    println!("{:?}", statements);
+    //println!("{:?}", statements);
     let mut global = GlobalScope::new();
     for s in statements {
         match s {
@@ -1130,6 +1129,7 @@ fn main() {
             _ => todo!(),
         }
     }
+    println!("section .rodata");
     for f in global.functions.iter() {
         for s in f.strings.iter() {
             println!(
@@ -1139,5 +1139,8 @@ fn main() {
             );
         }
     }
-    println!("{}", global.functions[0].asm());
+    println!("section .text");
+    for f in global.functions.iter() {
+        println!("{}", f.asm());
+    }
 }
