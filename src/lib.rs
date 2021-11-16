@@ -19,6 +19,9 @@ macro_rules! asm {
     };
 }
 
+mod scope;
+mod vars;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Operation {
     /// Assignment operation `=`
@@ -862,7 +865,7 @@ impl Statement {
 }
 
 #[derive(Debug)]
-struct Type {
+pub struct Type {
     name: String,
     /// Size in bytes
     size: usize,
