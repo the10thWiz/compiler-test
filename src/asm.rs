@@ -89,6 +89,6 @@ mod tests {
     #[test]
     fn it_works() {
         use Registers::*;
-        let asm = asm!(mov RAX, RBX);
+        let _asm = asm!(mov RAX, RBX);
     }
 }

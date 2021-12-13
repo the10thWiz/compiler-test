@@ -1,4 +1,4 @@
-use std::io::BufRead;
+use std::{borrow::Cow, io::BufRead};
 
 use crate::token::{Ident, Punct, Span, Token, TokenStream};
 
@@ -184,11 +184,11 @@ impl Type {
     pub fn width(&self) -> usize {
         match self {
             Type::Primitive {
-                floating,
-                signed,
+                floating: _,
+                signed: _,
                 size,
-                mutable,
-                span,
+                mutable: _,
+                span: _,
             } => {
                 if *size > 0 {
                     *size
@@ -196,15 +196,57 @@ impl Type {
                     8
                 }
             }
-            Type::Char { mutable, span } => 4,
-            Type::Tuple { types, span } => types.iter().map(|t| t.width()).sum(),
+            Type::Char { mutable: _, span: _ } => 4,
+            Type::Tuple { types, span: _ } => types.iter().map(|t| t.width()).sum(),
             Type::Named {
-                name,
-                mutable,
-                span,
+                name: _,
+                mutable: _,
+                span: _,
             } => todo!(),
-            Type::Reference { ty, span } => 8,
-            Type::Pointer { ty, span } => 8,
+            Type::Reference { ty: _, span: _ } => 8,
+            Type::Pointer { ty: _, span: _ } => 8,
+        }
+    }
+
+    pub fn as_str(&self) -> Cow<str> {
+        match self {
+            Type::Primitive {
+                floating: true,
+                signed: _,
+                size: 32,
+                mutable: _,
+                span: _,
+            } => Cow::Borrowed("f32"),
+            Type::Primitive {
+                floating: true,
+                signed: _,
+                size: 64,
+                mutable: _,
+                span: _,
+            } => Cow::Borrowed("f64"),
+            Type::Primitive {
+                floating: false,
+                signed: false,
+                size: 64,
+                mutable: _,
+                span: _,
+            } => Cow::Borrowed("u64"),
+            Type::Primitive {
+                floating: _,
+                signed: _,
+                size: _,
+                mutable: _,
+                span: _,
+            } => todo!(),
+            Type::Char { mutable: _, span: _ } => Cow::Borrowed("char"),
+            Type::Tuple { types: _, span: _ } => todo!(),
+            Type::Named {
+                name: _,
+                mutable: _,
+                span: _,
+            } => todo!(),
+            Type::Reference { ty, span: _ } => Cow::Owned(format!("R_{}", ty.as_str())),
+            Type::Pointer { ty, span: _ } => Cow::Owned(format!("P_{}", ty.as_str())),
         }
     }
 }

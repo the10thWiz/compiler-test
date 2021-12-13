@@ -1,7 +1,7 @@
-use std::io::{BufRead, Read};
+use std::io::{BufRead};
 
 use crate::expression::{Expression, FnCall, IfChain};
-use crate::scope::LocalScope;
+
 use crate::token::{Ident, Punct, Span, Token, TokenStream};
 use crate::types::Type;
 
@@ -90,6 +90,17 @@ impl FunctionSignature {
 
     pub fn params(&self) -> impl Iterator<Item = &(Ident, Type)> {
         self.params.iter()
+    }
+
+    pub fn label(&self) -> String {
+        let mut ret = String::new();
+        for (_i, t) in self.params() {
+            ret += &t.as_str();
+            ret += "_";
+        }
+        ret += "fn_";
+        ret += self.name.as_str();
+        ret
     }
 }
 

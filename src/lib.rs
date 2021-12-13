@@ -1,6 +1,6 @@
 use crate::{
     scope::Scope,
-    statement::{Statement, StatementStream},
+    statement::{StatementStream},
 };
 
 #[macro_use]

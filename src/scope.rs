@@ -4,7 +4,7 @@
 // Distributed under terms of the MIT license.
 //
 
-use std::{borrow::Cow, collections::LinkedList, sync::Weak};
+use std::{borrow::Cow, collections::LinkedList};
 
 use crate::{
     asm::{Asm, AsmParam},
@@ -42,8 +42,8 @@ impl AsmParam for Location {
 impl Location {
     fn set_width(&mut self, w: usize) {
         match self {
-            Location::Stack { offset, width } => *width = w,
-            Location::Static { label, width } => *width = w,
+            Location::Stack { offset: _, width } => *width = w,
+            Location::Static { label: _, width } => *width = w,
             Location::Const { .. } => (),
             Location::Unknown => (),
         }
@@ -71,8 +71,12 @@ impl LocalScope {
                     body,
                     span: _s,
                 } => {
-                    self.functions.push((sig.clone(), Location::Unknown));
-                    functions.push((sig, body, Location::Unknown));
+                    let location = Location::Static {
+                        label: sig.label(),
+                        width: 8,
+                    };
+                    self.functions.push((sig.clone(), location.clone()));
+                    functions.push((sig, body, location));
                     // Leaves an empty statement in the vector, which must be filtered later
                 }
                 a => {
@@ -139,7 +143,7 @@ impl Scope {
     }
 
     fn parse_function(&mut self) {
-        let (sig, mut block, location) = self.functions.pop().unwrap();
+        let (sig, mut block, _location) = self.functions.pop().unwrap();
 
         let mut scope = LocalScope::default();
         scope.add_signature(&mut block.statements, &mut self.functions);
@@ -159,11 +163,11 @@ impl Scope {
         self.enter_scope(scope);
         for statement in block.statements {
             match statement {
-                Statement::FunctionDef { sig, body, span } => todo!("This should never happen"),
+                Statement::FunctionDef { sig: _, body: _, span: _ } => todo!("This should never happen"),
                 Statement::Const {
-                    name,
-                    ty,
-                    value,
+                    name: _,
+                    ty: _,
+                    value: _,
                     span: _s,
                 } => todo!(),
                 Statement::Let {
@@ -180,23 +184,23 @@ impl Scope {
                     self.current().add_local(Variable { name, ty, location });
                 }
                 Statement::While {
-                    condition,
-                    body,
+                    condition: _,
+                    body: _,
                     span: _s,
                 } => todo!(),
                 Statement::For {
-                    vars,
-                    iter,
-                    body,
+                    vars: _,
+                    iter: _,
+                    body: _,
                     span: _s,
                 } => todo!(),
-                Statement::Return { expr, span: _s } => todo!(),
-                Statement::Break { expr, span: _s } => todo!(),
-                Statement::Continue { expr, span: _s } => todo!(),
-                Statement::Block(block) => todo!(),
-                Statement::If(if_chain) => (),
-                Statement::Implicit(expr) => todo!(),
-                Statement::FnCall(fncall, _s) => todo!(),
+                Statement::Return { expr: _, span: _s } => todo!(),
+                Statement::Break { expr: _, span: _s } => todo!(),
+                Statement::Continue { expr: _, span: _s } => todo!(),
+                Statement::Block(_block) => todo!(),
+                Statement::If(_if_chain) => (),
+                Statement::Implicit(_expr) => todo!(),
+                Statement::FnCall(_fncall, _s) => todo!(),
                 Statement::Empty => (),
             }
         }
@@ -213,7 +217,7 @@ impl Scope {
         match expr {
             Expression::FnCall(_, _) => todo!(),
             Expression::Value(Literal::Number(n, _s)) => self.current.add(asm!(mov & location, n)),
-            Expression::Value(lit) => todo!(),
+            Expression::Value(_lit) => todo!(),
             Expression::Variable(_) => todo!(),
             Expression::IfChain(_) => todo!(),
             Expression::Binary(_, _, _) => todo!(),
