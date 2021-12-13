@@ -1,6 +1,7 @@
-use std::io::BufRead;
+use std::io::{BufRead, Read};
 
 use crate::expression::{Expression, FnCall, IfChain};
+use crate::scope::LocalScope;
 use crate::token::{Ident, Punct, Span, Token, TokenStream};
 use crate::types::Type;
 
@@ -47,7 +48,6 @@ impl FunctionSignature {
             Token::Ident(i) if !i.is_keyword() => i
         );
         expect!(stream, Token::Punct(Punct { ch: '(', .. }));
-        let mut open = Span::default();
         let mut params = vec![];
         loop {
             let name = match stream.parse()? {
@@ -60,6 +60,7 @@ impl FunctionSignature {
             params.push((name, ty));
         }
 
+        let mut open = Span::default();
         let ret_type = match stream.parse()? {
             Token::Punct(Punct { ch: '-', .. }) => {
                 expect!(stream, Token::Punct(Punct { ch: '>', .. }));
@@ -81,6 +82,14 @@ impl FunctionSignature {
             },
             open,
         ))
+    }
+
+    pub fn name(&self) -> &Ident {
+        &self.name
+    }
+
+    pub fn params(&self) -> impl Iterator<Item = &(Ident, Type)> {
+        self.params.iter()
     }
 }
 
@@ -126,6 +135,7 @@ pub enum Statement {
         expr: Expression,
         span: Span,
     },
+    Block(Block),
     If(IfChain),
     Implicit(Expression),
     FnCall(FnCall, Span),
@@ -134,7 +144,8 @@ pub enum Statement {
 
 #[derive(Debug, Clone)]
 pub struct Block {
-    statements: Vec<Statement>,
+    pub statements: Vec<Statement>,
+    //pub scope: LocalScope,
     span: Span,
 }
 
@@ -221,14 +232,14 @@ impl Statement {
             }
             Token::Ident(Ident::Break(s)) => {
                 let (expr, _) = Expression::parse(stream, ';')?;
-                Ok(Self::Return {
+                Ok(Self::Break {
                     span: s.union(&expr.span()),
                     expr,
                 })
             }
             Token::Ident(Ident::Continue(s)) => {
                 let (expr, _) = Expression::parse(stream, ';')?;
-                Ok(Self::Return {
+                Ok(Self::Continue {
                     span: s.union(&expr.span()),
                     expr,
                 })
@@ -294,6 +305,7 @@ impl Statement {
                     next,
                 }))
             }
+            Token::Punct(Punct { ch: '{', span }) => Ok(Self::Block(Block::parse(stream, span)?)),
             Token::EOF => Ok(Self::Empty),
             token => {
                 //println!("{:?}", token);
@@ -307,6 +319,26 @@ impl Statement {
                     panic!("Only fncalls may be their own statement")
                 }
             }
+        }
+    }
+}
+
+pub struct StatementStream<R: BufRead> {
+    inner: TokenStream<R>,
+}
+
+impl<R: BufRead> From<TokenStream<R>> for StatementStream<R> {
+    fn from(inner: TokenStream<R>) -> Self {
+        Self { inner }
+    }
+}
+
+impl<R: BufRead> Iterator for StatementStream<R> {
+    type Item = Statement;
+    fn next(&mut self) -> Option<Self::Item> {
+        match Statement::parse(&mut self.inner).ok() {
+            Some(Statement::Empty) => None,
+            a => a,
         }
     }
 }

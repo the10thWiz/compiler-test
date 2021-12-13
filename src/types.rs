@@ -180,4 +180,31 @@ impl Type {
             | Self::Named { span, .. } => *span,
         }
     }
+
+    pub fn width(&self) -> usize {
+        match self {
+            Type::Primitive {
+                floating,
+                signed,
+                size,
+                mutable,
+                span,
+            } => {
+                if *size > 0 {
+                    *size
+                } else {
+                    8
+                }
+            }
+            Type::Char { mutable, span } => 4,
+            Type::Tuple { types, span } => types.iter().map(|t| t.width()).sum(),
+            Type::Named {
+                name,
+                mutable,
+                span,
+            } => todo!(),
+            Type::Reference { ty, span } => 8,
+            Type::Pointer { ty, span } => 8,
+        }
+    }
 }

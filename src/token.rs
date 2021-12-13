@@ -71,7 +71,7 @@ macro_rules! define {
 keywords!(define);
 
 impl Ident {
-    fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         macro_rules! as_str {
             ($($a:ident => $name:literal),*) => {
                 match self {
