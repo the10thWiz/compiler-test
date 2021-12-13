@@ -1,5 +1,5 @@
 extern crate compiler;
 
 fn main() {
-    compiler::main();
+    let _ = compiler::main();
 }

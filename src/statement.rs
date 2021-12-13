@@ -1,4 +1,4 @@
-use std::io::{BufRead};
+use std::io::BufRead;
 
 use crate::expression::{Expression, FnCall, IfChain};
 
@@ -60,18 +60,14 @@ impl FunctionSignature {
             params.push((name, ty));
         }
 
-        let mut open = Span::default();
-        let ret_type = match stream.parse()? {
+        let (ret_type, open) = match stream.parse()? {
             Token::Punct(Punct { ch: '-', .. }) => {
                 expect!(stream, Token::Punct(Punct { ch: '>', .. }));
-                let tmp = Type::parse(stream)?;
-                open = expect!(stream, Token::Punct(Punct { ch: '{', span }) => span);
-                tmp
+                let ret_ty = Type::parse(stream)?;
+                let open = expect!(stream, Token::Punct(Punct { ch: '{', span }) => span);
+                (ret_ty, open)
             }
-            Token::Punct(Punct { ch: '{', span }) => {
-                open = span;
-                Type::empty()
-            }
+            Token::Punct(Punct { ch: '{', span }) => (Type::empty(), span),
             _ => panic!("unexpected token"),
         };
         Ok((
@@ -182,6 +178,7 @@ impl Block {
         })
     }
 
+    #[allow(unused)]
     pub fn set_span(&mut self, span: Span) {
         self.span = span;
     }

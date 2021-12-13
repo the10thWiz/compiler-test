@@ -20,6 +20,8 @@ pub enum Type {
     },
     /// 4 byte utf-8 character
     Char { mutable: bool, span: Span },
+    /// a boolean
+    Bool { mutable: bool, span: Span },
     /// An unamed tuple type
     Tuple { types: Vec<Type>, span: Span },
     /// A named type
@@ -31,6 +33,7 @@ pub enum Type {
     /// A refernce to an inner type
     Reference { ty: Box<Type>, span: Span },
     /// A pointer to an inner type
+    #[allow(unused)]
     Pointer { ty: Box<Type>, span: Span },
 }
 
@@ -126,6 +129,10 @@ impl Type {
                     mutable: false,
                     span,
                 }),
+                "bool" => Ok(Self::Bool {
+                    mutable: false,
+                    span,
+                }),
                 _ => Ok(Self::Named {
                     name: Ident::User { val, span },
                     mutable: false,
@@ -149,6 +156,7 @@ impl Type {
         match self {
             Self::Primitive { mutable, span, .. }
             | Self::Char { mutable, span, .. }
+            | Self::Bool { mutable, span, .. }
             | Self::Named { mutable, span, .. } => {
                 *span = span.union(&new_span);
                 *mutable = true;
@@ -170,6 +178,13 @@ impl Type {
         }
     }
 
+    pub fn boolean() -> Self {
+        Self::Bool {
+            mutable: false,
+            span: Span::default(),
+        }
+    }
+
     pub fn span(&self) -> Span {
         match self {
             Self::Tuple { span, .. }
@@ -177,6 +192,7 @@ impl Type {
             | Self::Pointer { span, .. }
             | Self::Primitive { span, .. }
             | Self::Char { span, .. }
+            | Self::Bool { span, .. }
             | Self::Named { span, .. } => *span,
         }
     }
@@ -196,7 +212,14 @@ impl Type {
                     8
                 }
             }
-            Type::Char { mutable: _, span: _ } => 4,
+            Type::Char {
+                mutable: _,
+                span: _,
+            } => 4,
+            Type::Bool {
+                mutable: _,
+                span: _,
+            } => 1,
             Type::Tuple { types, span: _ } => types.iter().map(|t| t.width()).sum(),
             Type::Named {
                 name: _,
@@ -211,42 +234,64 @@ impl Type {
     pub fn as_str(&self) -> Cow<str> {
         match self {
             Type::Primitive {
-                floating: true,
-                signed: _,
-                size: 32,
+                floating,
+                signed,
+                size,
                 mutable: _,
                 span: _,
-            } => Cow::Borrowed("f32"),
-            Type::Primitive {
-                floating: true,
-                signed: _,
-                size: 64,
+            } => parts_to_str(*floating, *signed, *size),
+            Type::Char {
                 mutable: _,
                 span: _,
-            } => Cow::Borrowed("f64"),
-            Type::Primitive {
-                floating: false,
-                signed: false,
-                size: 64,
+            } => Cow::Borrowed("char"),
+            Type::Bool {
                 mutable: _,
                 span: _,
-            } => Cow::Borrowed("u64"),
-            Type::Primitive {
-                floating: _,
-                signed: _,
-                size: _,
-                mutable: _,
-                span: _,
-            } => todo!(),
-            Type::Char { mutable: _, span: _ } => Cow::Borrowed("char"),
-            Type::Tuple { types: _, span: _ } => todo!(),
+            } => Cow::Borrowed("bool"),
+            Type::Tuple { types, span: _ } => {
+                let mut ret = String::from("T");
+                for t in types {
+                    ret += "_";
+                    ret += &t.as_str();
+                }
+                ret += "_T";
+                Cow::Owned(ret)
+            }
             Type::Named {
-                name: _,
+                name,
                 mutable: _,
                 span: _,
-            } => todo!(),
+            } => Cow::Owned(format!("N_{}", name.as_str())),
             Type::Reference { ty, span: _ } => Cow::Owned(format!("R_{}", ty.as_str())),
             Type::Pointer { ty, span: _ } => Cow::Owned(format!("P_{}", ty.as_str())),
+        }
+    }
+}
+
+fn parts_to_str(floating: bool, signed: bool, size: usize) -> Cow<'static, str> {
+    if floating {
+        match size {
+            64 => Cow::Borrowed("f64"),
+            32 => Cow::Borrowed("f32"),
+            _ => panic!("Invalid type"),
+        }
+    } else if signed {
+        match size {
+            64 => Cow::Borrowed("i64"),
+            32 => Cow::Borrowed("i32"),
+            16 => Cow::Borrowed("i16"),
+            8 => Cow::Borrowed("i8"),
+            0 => Cow::Borrowed("isize"),
+            _ => panic!("Invalid type"),
+        }
+    } else {
+        match size {
+            64 => Cow::Borrowed("u64"),
+            32 => Cow::Borrowed("u32"),
+            16 => Cow::Borrowed("u16"),
+            8 => Cow::Borrowed("u8"),
+            0 => Cow::Borrowed("usize"),
+            _ => panic!("Invalid type"),
         }
     }
 }

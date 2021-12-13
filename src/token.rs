@@ -1,5 +1,5 @@
 use std::{
-    io::{BufRead, Read, Result},
+    io::{BufRead, Result},
     ops::Range,
 };
 
@@ -10,6 +10,7 @@ pub struct Span {
 }
 
 impl Span {
+    #[allow(unused)]
     pub fn as_range(&self) -> Range<usize> {
         Range {
             start: self.start,

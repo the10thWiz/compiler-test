@@ -1,5 +1,8 @@
 use std::io::BufRead;
 
+use crate::asm::Location;
+use crate::asm::UnaryOp;
+use crate::scope::Scope;
 use crate::statement::Block;
 
 use crate::token::Ident;
@@ -8,7 +11,7 @@ use crate::token::Punct;
 use crate::token::Span;
 use crate::token::Token;
 use crate::token::TokenStream;
-
+use crate::types::Type;
 
 /// There is no ElseIf variant, since it would be the same as an if. The only way to identify if an
 /// If is actually an IfElse is whether it's in the master `Statement::If` or in the next of an
@@ -40,12 +43,61 @@ impl IfChain {
             Self::Else { span, .. } => *span = new_span,
         }
     }
+
+    pub fn to_asm(self, scope: &mut Scope) -> Option<Location> {
+        match self {
+            IfChain::If {
+                condition,
+                body,
+                next,
+                span: _s,
+            } => {
+                let (_ty, loc) = scope.parse_expresion(*condition, Some(Type::boolean()));
+                let label = scope.cur.local_label();
+                let end = scope.cur.local_label();
+                scope.cur.unary(UnaryOp::Not, loc.clone(), loc.clone());
+                scope.cur.branch(loc, label); // Branch on !condition
+                scope.parse_block(None, body); // run block if true
+                scope.cur.jump(end); // Skip any elses
+                scope.cur.label(label); // jumps to here when false
+                if let Some(ch) = next {
+                    ch.to_asm(scope);
+                }
+                scope.cur.label(end); // jumps to here when done
+            }
+            IfChain::Else { body, span: _s } => {
+                scope.parse_block(None, body); // run block
+            }
+        }
+        None
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct FnCall {
     name: Box<Expression>,
     params: Vec<Expression>,
+}
+
+impl FnCall {
+    pub fn to_asm(self, scope: &mut Scope) -> Location {
+        let mut params = vec![];
+        let (_ty, loc) = match *self.name {
+            Expression::Binary(lhs, Operation::Dot(_), rhs) => {
+                params.push(scope.parse_expresion(*lhs, None).1);
+                scope.parse_expresion(*rhs, None)
+            }
+            expr => scope.parse_expresion(expr, None),
+        };
+        params.extend(
+            self.params
+                .into_iter()
+                .map(|e| scope.parse_expresion(e, None).1),
+        );
+        let ret = scope.cur.local(&Type::empty(), None);
+        scope.cur.fn_call(loc, params, ret.clone());
+        ret
+    }
 }
 
 #[derive(Debug, Clone)]

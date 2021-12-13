@@ -4,13 +4,13 @@
 // Distributed under terms of the MIT license.
 //
 
-use std::{borrow::Cow, collections::LinkedList};
+use std::collections::LinkedList;
 
 use crate::{
-    asm::{Asm, AsmParam},
+    asm::{BinaryOp, InnerAsmStream, Label, Location, UnaryOp},
     expression::Expression,
     statement::{Block, FunctionSignature, Statement},
-    token::{Ident, Literal},
+    token::Ident,
     types::Type,
 };
 
@@ -19,35 +19,6 @@ pub struct Variable {
     name: Ident,
     ty: Type,
     location: Location,
-}
-
-#[derive(Debug, Clone)]
-pub enum Location {
-    Stack { offset: usize, width: usize },
-    Static { label: String, width: usize },
-    Const { expr: Expression },
-    Unknown,
-}
-
-impl AsmParam for Location {
-    fn as_param(&self) -> Cow<str> {
-        match self {
-            Location::Stack { offset, width: _ } => Cow::Owned(format!("[sbp + {}]", offset)),
-            Location::Static { label, width: _ } => label.as_param(),
-            Location::Const { expr: _ } => todo!(),
-            Location::Unknown => todo!(),
-        }
-    }
-}
-impl Location {
-    fn set_width(&mut self, w: usize) {
-        match self {
-            Location::Stack { offset: _, width } => *width = w,
-            Location::Static { label: _, width } => *width = w,
-            Location::Const { .. } => (),
-            Location::Unknown => (),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -71,8 +42,8 @@ impl LocalScope {
                     body,
                     span: _s,
                 } => {
-                    let location = Location::Static {
-                        label: sig.label(),
+                    let location = Location::Label {
+                        name: sig.label(),
                         width: 8,
                     };
                     self.functions.push((sig.clone(), location.clone()));
@@ -117,9 +88,11 @@ impl LocalScope {
 pub struct Scope {
     global: LocalScope,
     local: LinkedList<LocalScope>,
-    symbols: Vec<Symbol>,
+    asm: Vec<InnerAsmStream>,
     functions: Vec<(FunctionSignature, Block, Location)>,
-    current: Symbol,
+    pub cur: InnerAsmStream,
+    loop_head: Option<Label>,
+    loop_tail: Option<Label>,
 }
 
 impl Scope {
@@ -143,64 +116,87 @@ impl Scope {
     }
 
     fn parse_function(&mut self) {
-        let (sig, mut block, _location) = self.functions.pop().unwrap();
-
+        let (sig, block, location) = self.functions.pop().unwrap();
         let mut scope = LocalScope::default();
-        scope.add_signature(&mut block.statements, &mut self.functions);
         for (name, ty) in sig.params() {
+            let location = self.cur.param(&ty);
             scope.add_local(Variable {
                 name: name.clone(),
                 ty: ty.clone(),
-                location: Location::Unknown,
+                location,
             });
         }
-        self.current = Symbol::Function {
-            name: sig.name().as_str().to_owned(),
-            sig,
-            value: vec![],
-        };
+        match location {
+            Location::Label { name, .. } => self.cur.exported_label(name),
+            Location::Local { id: _, .. } => todo!(),
+            Location::Param { num: _, .. } => todo!(),
+        }
+        self.parse_block(scope.into(), block);
+        self.asm.push(std::mem::take(&mut self.cur))
+    }
+
+    pub fn parse_block(&mut self, scope: Option<LocalScope>, mut block: Block) {
+        let mut scope = scope.unwrap_or_default();
+        scope.add_signature(&mut block.statements, &mut self.functions);
 
         self.enter_scope(scope);
         for statement in block.statements {
             match statement {
-                Statement::FunctionDef { sig: _, body: _, span: _ } => todo!("This should never happen"),
+                Statement::FunctionDef {
+                    sig: _,
+                    body: _,
+                    span: _,
+                } => todo!("This should never happen"),
                 Statement::Const {
                     name: _,
                     ty: _,
                     value: _,
                     span: _s,
-                } => todo!(),
+                } => todo!("Constants"),
                 Statement::Let {
                     name,
                     ty,
                     value,
                     span: _s,
                 } => {
-                    let mut location = Location::Stack {
-                        offset: 0,
-                        width: 0,
-                    };
-                    let ty = self.parse_expresion(&mut location, value, ty);
+                    //let mut location = self.cur.alloc(&Type::empty(), None);
+                    let (ty, location) = self.parse_expresion(value, ty);
                     self.current().add_local(Variable { name, ty, location });
                 }
                 Statement::While {
                     condition: _,
                     body: _,
                     span: _s,
-                } => todo!(),
+                } => todo!("While loops"),
                 Statement::For {
                     vars: _,
                     iter: _,
                     body: _,
                     span: _s,
-                } => todo!(),
-                Statement::Return { expr: _, span: _s } => todo!(),
-                Statement::Break { expr: _, span: _s } => todo!(),
-                Statement::Continue { expr: _, span: _s } => todo!(),
-                Statement::Block(_block) => todo!(),
-                Statement::If(_if_chain) => (),
-                Statement::Implicit(_expr) => todo!(),
-                Statement::FnCall(_fncall, _s) => todo!(),
+                } => todo!("For Loops"),
+                Statement::Return { expr, span: _s } => {
+                    let loc = self.parse_expresion(expr, None).1;
+                    self.cur.return_fn(loc);
+                }
+                Statement::Break { expr: _, span: _s } => {
+                    self.cur
+                        .jump(self.loop_tail.clone().expect("Not in a loop"));
+                }
+                Statement::Continue { expr: _, span: _s } => {
+                    self.cur
+                        .jump(self.loop_head.clone().expect("Not in a loop"));
+                }
+                Statement::Block(block) => self.parse_block(None, block),
+                Statement::If(if_chain) => {
+                    assert!(if_chain.to_asm(self).is_none(), "No return type expected")
+                }
+                Statement::Implicit(expr) => {
+                    let loc = self.parse_expresion(expr, None).1;
+                    self.cur.return_fn(loc);
+                }
+                Statement::FnCall(fn_call, _s) => {
+                    fn_call.to_asm(self);
+                }
                 Statement::Empty => (),
             }
         }
@@ -208,22 +204,33 @@ impl Scope {
     }
 
     /// Assigns the result of expr to location
-    fn parse_expresion(
-        &mut self,
-        location: &mut Location,
-        expr: Expression,
-        ty_hint: Option<Type>,
-    ) -> Type {
-        match expr {
-            Expression::FnCall(_, _) => todo!(),
-            Expression::Value(Literal::Number(n, _s)) => self.current.add(asm!(mov & location, n)),
-            Expression::Value(_lit) => todo!(),
-            Expression::Variable(_) => todo!(),
+    pub fn parse_expresion(&mut self, expr: Expression, ty_hint: Option<Type>) -> (Type, Location) {
+        let mut location = self.cur.local(&Type::empty(), None);
+        let src = match expr {
+            Expression::FnCall(fn_call, _s) => fn_call.to_asm(self),
+            Expression::Value(lit) => {
+                let loc = self
+                    .cur
+                    .local(ty_hint.as_ref().unwrap_or(&Type::empty()), Some(lit));
+                loc
+            }
+            Expression::Variable(v) => self.lookup(&v).cloned().expect("Variable not defined"),
             Expression::IfChain(_) => todo!(),
-            Expression::Binary(_, _, _) => todo!(),
-            Expression::Unary(_, _) => todo!(),
+            Expression::Binary(lhs, op, rhs) => {
+                let (_ty, lhs) = self.parse_expresion(*lhs, None);
+                let (_ty, rhs) = self.parse_expresion(*rhs, None);
+                let loc = self.cur.local(&_ty, None);
+                self.cur.binary(BinaryOp::new(op), lhs, rhs, loc.clone());
+                loc
+            }
+            Expression::Unary(op, rhs) => {
+                let (_ty, rhs) = self.parse_expresion(*rhs, None);
+                let loc = self.cur.local(&_ty, None);
+                self.cur.unary(UnaryOp::new(op), rhs, loc.clone());
+                loc
+            }
             Expression::Tuple(_, _) => todo!(),
-        }
+        };
         //todo!("Eval: ?");
         let ty = if let Some(ty) = ty_hint {
             ty
@@ -231,7 +238,8 @@ impl Scope {
             Type::empty()
         };
         location.set_width(ty.width());
-        ty
+        self.cur.mov(src, location.clone());
+        (ty, location)
     }
 }
 
@@ -244,10 +252,7 @@ impl Scope {
         // Note: we don't parse the global scope as a block, since we only allow signatures in the
         // global scope.
         //
-        // After collecting signatures, we then expand them into the corresponding symbols.
-        //for (sig, block) in ret.functions {
-        //ret.parse_block(block);
-        //}
+        // After collecting signatures, we then expand them into the corresponding asm
         while !ret.functions.is_empty() {
             ret.parse_function();
         }
@@ -256,33 +261,3 @@ impl Scope {
 }
 
 // Namespaces?
-
-#[derive(Debug, Clone)]
-pub enum Symbol {
-    Empty,
-    Function {
-        sig: FunctionSignature,
-        name: String,
-        value: Vec<Asm>,
-    },
-    Const {
-        name: String,
-        value: Vec<Asm>,
-    },
-}
-
-impl Symbol {
-    pub fn add(&mut self, asm: Asm) {
-        match self {
-            Self::Empty => panic!("Unsupported operation"),
-            Self::Function { value, .. } => value.push(asm),
-            Self::Const { value, .. } => value.push(asm),
-        }
-    }
-}
-
-impl Default for Symbol {
-    fn default() -> Self {
-        Self::Empty
-    }
-}

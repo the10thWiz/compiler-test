@@ -1,7 +1,4 @@
-use crate::{
-    scope::Scope,
-    statement::{StatementStream},
-};
+use crate::{scope::Scope, statement::StatementStream};
 
 #[macro_use]
 mod asm;
@@ -14,11 +11,12 @@ mod types;
 pub const EXAMPLE_SOURCE: &str = "
     // test
     fn main(b: &mut u64) {
+        let printf: u64 = 0;
         let c: u64 = 12;
-        if a > b {
-            let a: u64 = b.abs() + 12;
+        if c > b {
+            //let a: u64 = b.abs() + 12;
         }
-        //printf(\"%n\", a);
+        printf(\"%n\", c);
     }
 ";
 
