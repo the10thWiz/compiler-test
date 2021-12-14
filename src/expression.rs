@@ -52,7 +52,7 @@ impl IfChain {
                 next,
                 span: _s,
             } => {
-                let (_ty, loc) = scope.parse_expresion(*condition, Some(Type::boolean()));
+                let loc = scope.parse_expresion(*condition, Some(Type::boolean()));
                 let label = scope.cur.local_label();
                 let end = scope.cur.local_label();
                 scope.cur.unary(UnaryOp::Not, loc.clone(), loc.clone());
@@ -81,22 +81,28 @@ pub struct FnCall {
 
 impl FnCall {
     pub fn to_asm(self, scope: &mut Scope) -> Location {
-        let mut params = vec![];
-        let (_ty, loc) = match *self.name {
-            Expression::Binary(lhs, Operation::Dot(_), rhs) => {
-                params.push(scope.parse_expresion(*lhs, None).1);
-                scope.parse_expresion(*rhs, None)
-            }
+        let mut params_loc = vec![];
+        let loc = match *self.name {
+            //Expression::Binary(lhs, Operation::Dot(_), rhs) => {
+            //params.push(scope.parse_expresion(*lhs, None));
+            //scope.parse_expresion(*rhs, None)
+            //}
             expr => scope.parse_expresion(expr, None),
         };
-        params.extend(
-            self.params
-                .into_iter()
-                .map(|e| scope.parse_expresion(e, None).1),
-        );
-        let ret = scope.cur.local(&Type::empty(), None);
-        scope.cur.fn_call(loc, params, ret.clone());
-        ret
+        match loc.ty() {
+            Type::FnPtr { params, ret, .. } => {
+                params_loc.extend(
+                    self.params
+                        .into_iter()
+                        .zip(params.iter())
+                        .map(|(e, ty)| scope.parse_expresion(e, Some(ty.clone()))),
+                );
+                let ret = scope.cur.local(ret, None);
+                scope.cur.fn_call(loc, params_loc, ret.clone());
+                ret
+            }
+            t => panic!("{:?} is not callable", t),
+        }
     }
 }
 

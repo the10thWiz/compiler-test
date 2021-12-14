@@ -8,7 +8,7 @@ use crate::token::{Ident, Punct, Span, Token, TokenStream};
 // Distributed under terms of the MIT license.
 //
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     /// primitive number
     Primitive {
@@ -35,6 +35,12 @@ pub enum Type {
     /// A pointer to an inner type
     #[allow(unused)]
     Pointer { ty: Box<Type>, span: Span },
+
+    FnPtr {
+        params: Vec<Type>,
+        ret: Box<Type>,
+        span: Span,
+    },
 }
 
 impl Type {
@@ -163,6 +169,7 @@ impl Type {
             }
             Self::Reference { ty, span, .. } | Self::Pointer { ty, span, .. } => ty.mutable(*span),
             Self::Tuple { types, span, .. } => types.iter_mut().for_each(|t| t.mutable(*span)),
+            Self::FnPtr { .. } => panic!("Function pointers cannot be mutable"),
         }
     }
 
@@ -193,41 +200,27 @@ impl Type {
             | Self::Primitive { span, .. }
             | Self::Char { span, .. }
             | Self::Bool { span, .. }
+            | Self::FnPtr { span, .. }
             | Self::Named { span, .. } => *span,
         }
     }
 
     pub fn width(&self) -> usize {
         match self {
-            Type::Primitive {
-                floating: _,
-                signed: _,
-                size,
-                mutable: _,
-                span: _,
-            } => {
+            Type::Primitive { size, .. } => {
                 if *size > 0 {
                     *size
                 } else {
                     8
                 }
             }
-            Type::Char {
-                mutable: _,
-                span: _,
-            } => 4,
-            Type::Bool {
-                mutable: _,
-                span: _,
-            } => 1,
-            Type::Tuple { types, span: _ } => types.iter().map(|t| t.width()).sum(),
-            Type::Named {
-                name: _,
-                mutable: _,
-                span: _,
-            } => todo!(),
-            Type::Reference { ty: _, span: _ } => 8,
-            Type::Pointer { ty: _, span: _ } => 8,
+            Type::Char { .. } => 4,
+            Type::Bool { .. } => 1,
+            Type::Tuple { types, .. } => types.iter().map(|t| t.width()).sum(),
+            Type::Named { .. } => todo!(),
+            Type::Reference { .. } => 8,
+            Type::Pointer { .. } => 8,
+            Type::FnPtr { .. } => 8,
         }
     }
 
@@ -237,18 +230,11 @@ impl Type {
                 floating,
                 signed,
                 size,
-                mutable: _,
-                span: _,
+                ..
             } => parts_to_str(*floating, *signed, *size),
-            Type::Char {
-                mutable: _,
-                span: _,
-            } => Cow::Borrowed("char"),
-            Type::Bool {
-                mutable: _,
-                span: _,
-            } => Cow::Borrowed("bool"),
-            Type::Tuple { types, span: _ } => {
+            Type::Char { .. } => Cow::Borrowed("char"),
+            Type::Bool { .. } => Cow::Borrowed("bool"),
+            Type::Tuple { types, .. } => {
                 let mut ret = String::from("T");
                 for t in types {
                     ret += "_";
@@ -257,13 +243,20 @@ impl Type {
                 ret += "_T";
                 Cow::Owned(ret)
             }
-            Type::Named {
-                name,
-                mutable: _,
-                span: _,
-            } => Cow::Owned(format!("N_{}", name.as_str())),
-            Type::Reference { ty, span: _ } => Cow::Owned(format!("R_{}", ty.as_str())),
-            Type::Pointer { ty, span: _ } => Cow::Owned(format!("P_{}", ty.as_str())),
+            Type::Named { name, .. } => Cow::Owned(format!("N_{}", name.as_str())),
+            Type::Reference { ty, .. } => Cow::Owned(format!("R_{}", ty.as_str())),
+            Type::Pointer { ty, .. } => Cow::Owned(format!("P_{}", ty.as_str())),
+            Type::FnPtr { params, ret, .. } => {
+                let mut name = String::from("FP");
+                for t in params {
+                    name += "_";
+                    name += &t.as_str();
+                }
+                name += "_R_";
+                name += &ret.as_str();
+                name += "_FP";
+                Cow::Owned(name)
+            }
         }
     }
 }

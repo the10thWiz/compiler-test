@@ -17,14 +17,13 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct Variable {
     name: Ident,
-    ty: Type,
     location: Location,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct LocalScope {
-    functions: Vec<(FunctionSignature, Location)>,
-    vars: Vec<Variable>,
+    pub functions: Vec<(FunctionSignature, Location)>,
+    pub vars: Vec<Variable>,
 }
 
 impl LocalScope {
@@ -44,7 +43,7 @@ impl LocalScope {
                 } => {
                     let location = Location::Label {
                         name: sig.label(),
-                        width: 8,
+                        ty: sig.ty(),
                     };
                     self.functions.push((sig.clone(), location.clone()));
                     functions.push((sig, body, location));
@@ -82,17 +81,26 @@ impl LocalScope {
         }
         None
     }
+
+    pub fn lookup_fn<'a>(&'a self, name: &Ident) -> Option<(&'a FunctionSignature, &'a Location)> {
+        for (f, location) in self.functions.iter() {
+            if f.name().as_str() == name.as_str() {
+                return Some((f, location));
+            }
+        }
+        None
+    }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct Scope {
-    global: LocalScope,
-    local: LinkedList<LocalScope>,
-    asm: Vec<InnerAsmStream>,
-    functions: Vec<(FunctionSignature, Block, Location)>,
+    pub global: LocalScope,
+    pub local: LinkedList<LocalScope>,
+    pub asm: Vec<InnerAsmStream>,
+    pub functions: Vec<(FunctionSignature, Block, Location)>,
     pub cur: InnerAsmStream,
-    loop_head: Option<Label>,
-    loop_tail: Option<Label>,
+    pub loop_head: Option<Label>,
+    pub loop_tail: Option<Label>,
 }
 
 impl Scope {
@@ -101,6 +109,13 @@ impl Scope {
             .iter()
             .find_map(|s| s.lookup(name))
             .or_else(|| self.global.lookup(name))
+    }
+
+    pub fn lookup_fn<'a>(&'a self, name: &Ident) -> Option<(&'a FunctionSignature, &'a Location)> {
+        self.local
+            .iter()
+            .find_map(|s| s.lookup_fn(name))
+            .or_else(|| self.global.lookup_fn(name))
     }
 
     pub fn enter_scope(&mut self, scope: LocalScope) {
@@ -122,7 +137,6 @@ impl Scope {
             let location = self.cur.param(&ty);
             scope.add_local(Variable {
                 name: name.clone(),
-                ty: ty.clone(),
                 location,
             });
         }
@@ -160,8 +174,8 @@ impl Scope {
                     span: _s,
                 } => {
                     //let mut location = self.cur.alloc(&Type::empty(), None);
-                    let (ty, location) = self.parse_expresion(value, ty);
-                    self.current().add_local(Variable { name, ty, location });
+                    let location = self.parse_expresion(value, ty);
+                    self.current().add_local(Variable { name, location });
                 }
                 Statement::While {
                     condition: _,
@@ -175,7 +189,7 @@ impl Scope {
                     span: _s,
                 } => todo!("For Loops"),
                 Statement::Return { expr, span: _s } => {
-                    let loc = self.parse_expresion(expr, None).1;
+                    let loc = self.parse_expresion(expr, None);
                     self.cur.return_fn(loc);
                 }
                 Statement::Break { expr: _, span: _s } => {
@@ -191,7 +205,7 @@ impl Scope {
                     assert!(if_chain.to_asm(self).is_none(), "No return type expected")
                 }
                 Statement::Implicit(expr) => {
-                    let loc = self.parse_expresion(expr, None).1;
+                    let loc = self.parse_expresion(expr, None);
                     self.cur.return_fn(loc);
                 }
                 Statement::FnCall(fn_call, _s) => {
@@ -204,7 +218,7 @@ impl Scope {
     }
 
     /// Assigns the result of expr to location
-    pub fn parse_expresion(&mut self, expr: Expression, ty_hint: Option<Type>) -> (Type, Location) {
+    pub fn parse_expresion(&mut self, expr: Expression, mut ty_hint: Option<Type>) -> Location {
         let mut location = self.cur.local(&Type::empty(), None);
         let src = match expr {
             Expression::FnCall(fn_call, _s) => fn_call.to_asm(self),
@@ -217,15 +231,15 @@ impl Scope {
             Expression::Variable(v) => self.lookup(&v).cloned().expect("Variable not defined"),
             Expression::IfChain(_) => todo!(),
             Expression::Binary(lhs, op, rhs) => {
-                let (_ty, lhs) = self.parse_expresion(*lhs, None);
-                let (_ty, rhs) = self.parse_expresion(*rhs, None);
-                let loc = self.cur.local(&_ty, None);
+                let lhs = self.parse_expresion(*lhs, None);
+                let rhs = self.parse_expresion(*rhs, None);
+                let loc = self.cur.local(&lhs.ty(), None);
                 self.cur.binary(BinaryOp::new(op), lhs, rhs, loc.clone());
                 loc
             }
             Expression::Unary(op, rhs) => {
-                let (_ty, rhs) = self.parse_expresion(*rhs, None);
-                let loc = self.cur.local(&_ty, None);
+                let rhs = self.parse_expresion(*rhs, None);
+                let loc = self.cur.local(&rhs.ty(), None);
                 self.cur.unary(UnaryOp::new(op), rhs, loc.clone());
                 loc
             }
@@ -235,28 +249,30 @@ impl Scope {
         let ty = if let Some(ty) = ty_hint {
             ty
         } else {
-            Type::empty()
+            src.ty().clone()
         };
-        location.set_width(ty.width());
+        location.set_type(ty.clone());
         self.cur.mov(src, location.clone());
-        (ty, location)
+        location
     }
-}
 
-impl Scope {
     pub fn from_statements(iter: impl Iterator<Item = Statement>) -> Self {
         let mut ret = Self::default();
+        ret.parse_statements(iter);
+        ret
+    }
+
+    pub fn parse_statements(&mut self, iter: impl Iterator<Item = Statement>) {
         let mut statements: Vec<_> = iter.collect();
-        ret.global
-            .add_signature(&mut statements, &mut ret.functions);
+        self.global
+            .add_signature(&mut statements, &mut self.functions);
         // Note: we don't parse the global scope as a block, since we only allow signatures in the
         // global scope.
         //
         // After collecting signatures, we then expand them into the corresponding asm
-        while !ret.functions.is_empty() {
-            ret.parse_function();
+        while !self.functions.is_empty() {
+            self.parse_function();
         }
-        ret
     }
 }
 

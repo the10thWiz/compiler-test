@@ -71,17 +71,25 @@ impl BinaryOp {
 
 #[derive(Debug, Clone)]
 pub enum Location {
-    Label { name: String, width: usize },
-    Local { id: usize, width: usize },
-    Param { num: usize, width: usize },
+    Label { name: String, ty: Type },
+    Local { id: usize, ty: Type },
+    Param { num: usize, ty: Type },
 }
 
 impl Location {
-    pub fn set_width(&mut self, w: usize) {
+    pub fn set_type(&mut self, t: Type) {
         match self {
-            Self::Label { name: _, width } => *width = w,
-            Self::Local { id: _, width } => *width = w,
-            Self::Param { num: _, width } => *width = w,
+            Self::Label { name: _, ty } => *ty = t,
+            Self::Local { id: _, ty } => *ty = t,
+            Self::Param { num: _, ty } => *ty = t,
+        }
+    }
+
+    pub fn ty(&self) -> &Type {
+        match self {
+            Self::Label { name: _, ty } => ty,
+            Self::Local { id: _, ty } => ty,
+            Self::Param { num: _, ty } => ty,
         }
     }
 }
@@ -166,7 +174,7 @@ impl InnerAsmStream {
     pub fn local(&mut self, ty: &Type, src: Option<Literal>) -> Location {
         let loc = Location::Local {
             id: self.stack,
-            width: ty.width(),
+            ty: ty.clone(),
         };
         self.stack += 1;
         self.stream.push(InnerAsm::Alloc {
@@ -184,7 +192,7 @@ impl InnerAsmStream {
     pub fn param(&mut self, ty: &Type) -> Location {
         let loc = Location::Param {
             num: self.param,
-            width: ty.width(),
+            ty: ty.clone(),
         };
         self.param += 1;
         loc

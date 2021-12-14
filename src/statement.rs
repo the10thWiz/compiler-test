@@ -5,11 +5,11 @@ use crate::expression::{Expression, FnCall, IfChain};
 use crate::token::{Ident, Punct, Span, Token, TokenStream};
 use crate::types::Type;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionSignature {
-    name: Ident,
-    params: Vec<(Ident, Type)>,
-    ret_type: Type,
+    pub name: Ident,
+    pub params: Vec<(Ident, Type)>,
+    pub ret_type: Type,
 }
 
 macro_rules! expect {
@@ -53,11 +53,16 @@ impl FunctionSignature {
             let name = match stream.parse()? {
                 Token::Ident(i) if !i.is_keyword() => i,
                 Token::Punct(Punct { ch: ')', .. }) => break,
-                _ => panic!("Unexpected token"),
+                t => panic!("Unexpected token: {:?}", t),
             };
             expect!(stream, Token::Punct(Punct { ch: ':', .. }));
             let ty = Type::parse(stream)?;
             params.push((name, ty));
+            match stream.parse()? {
+                Token::Punct(Punct { ch: ')', .. }) => break,
+                Token::Punct(Punct { ch: ',', .. }) => (),
+                t => panic!("Unexpected token: {:?}", t),
+            }
         }
 
         let (ret_type, open) = match stream.parse()? {
@@ -97,6 +102,14 @@ impl FunctionSignature {
         ret += "fn_";
         ret += self.name.as_str();
         ret
+    }
+
+    pub fn ty(&self) -> Type {
+        Type::FnPtr {
+            params: self.params().map(|(_, t)| t.clone()).collect(),
+            ret: Box::new(self.ret_type.clone()),
+            span: Span::default(),
+        }
     }
 }
 

@@ -3,7 +3,8 @@ use std::{
     ops::Range,
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+/// Note - always compares the same, to make implementing eq easier?
+#[derive(Clone, Copy, Hash, Default)]
 pub struct Span {
     start: usize,
     end: usize,
@@ -31,6 +32,14 @@ impl std::fmt::Debug for Span {
         write!(f, "{}..{}", self.start, self.end)
     }
 }
+
+impl std::cmp::PartialEq for Span {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl std::cmp::Eq for Span {}
 
 macro_rules! keywords {
     ($a:ident) => {
