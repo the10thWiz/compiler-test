@@ -2,6 +2,7 @@ pub use crate::{scope::Scope, statement::StatementStream};
 
 #[macro_use]
 mod asm;
+mod errors;
 mod expression;
 mod scope;
 mod statement;
@@ -44,8 +45,8 @@ pub fn main() -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        statement::FunctionSignature,
-        token::{Span, TokenStream},
+        statement::{FunctionSignature, Statement},
+        token::{Ident, Span, TokenStream},
         types::Type,
     };
 
@@ -84,5 +85,97 @@ mod tests {
             scope.global.functions[0].0, main,
             "Did not parse main fn correctly"
         );
+    }
+
+    macro_rules! vec_match {
+        ($vec:expr, [$($parsed:pat $(if $cond:expr)?),*]) => {{
+            #[allow(unused_mut)]
+            let mut tmp = $vec;
+            $(
+                if let $parsed = tmp.remove(0) {
+                    $(
+                        if !($cond) {
+                            panic!("Expression parsing failed");
+                        }
+                     )?
+                } else {
+                    panic!("Expression parsing failed");
+                }
+            )*
+            if tmp.len() != 0 {
+                panic!("Too many expressions");
+            }
+            true
+        }};
+    }
+
+    #[test]
+    fn statements() {
+        macro_rules! test {
+            ($src:literal => $($parsed:pat $(if $cond:expr)?),+) => {{
+                const EXAMPLE: &str = $src;
+                let stream = token::TokenStream::new(EXAMPLE.as_bytes());
+                let mut tmp = StatementStream::from(stream).collect::<Vec<_>>();
+                $(
+                    if let $parsed = tmp.remove(0) {
+                        $(
+                            if !($cond) {
+                                panic!("Expression parsing failed");
+                            }
+                        )?
+                    } else {
+                        panic!("Expression parsing failed");
+                    }
+                )+
+            }};
+        }
+        test!(" fn main() {} " => Statement::FunctionDef {
+            sig: FunctionSignature {
+                    name: Ident::User {val: name, ..},
+                    params,
+                    ret_type
+                },
+            body,
+            ..
+        } if name == "main" && params == vec![] && ret_type == Type::empty() && vec_match!(body.statements, []));
+        test!(" fn printf() {} " => Statement::FunctionDef {
+            sig: FunctionSignature {
+                    name: Ident::User {val: name, ..},
+                    params,
+                    ret_type
+                },
+            body,
+            ..
+        } if name == "printf" && params == vec![] && ret_type == Type::empty() && vec_match!(body.statements, []));
+        test!(" fn main(a: u64) {} " => Statement::FunctionDef {
+            sig: FunctionSignature {
+                    name: Ident::User {val: name, ..},
+                    params,
+                    ret_type
+                },
+            body,
+            ..
+        } if name == "main" && vec_match!(params, [(_, Type::Primitive {
+            floating: false,
+            signed: false,
+            size: 8,
+            mutable: false,
+            ..
+        })]) && ret_type == Type::empty() && vec_match!(body.statements, []));
+        test!(" fn main(a: i64) {} " => Statement::FunctionDef {
+            sig: FunctionSignature {
+                    name: Ident::User {val: name, ..},
+                    params,
+                    ret_type
+                },
+            body,
+            ..
+        } if name == "main" && vec_match!(params, [(_, Type::Primitive {
+            floating: false,
+            signed: true,
+            size: 8,
+            mutable: false,
+            ..
+        })]) && ret_type == Type::empty() && vec_match!(body.statements, []));
     }
 }

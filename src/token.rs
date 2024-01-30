@@ -3,11 +3,13 @@ use std::{
     ops::Range,
 };
 
+use crate::types::Type;
+
 /// Note - always compares the same, to make implementing eq easier?
 #[derive(Clone, Copy, Hash, Default)]
 pub struct Span {
-    start: usize,
-    end: usize,
+    pub start: usize,
+    pub end: usize,
 }
 
 impl Span {
@@ -305,6 +307,50 @@ impl Literal {
             Self::Number(_, s) => *s,
             Self::String(_, s) => *s,
             Self::Char(_, s) => *s,
+        }
+    }
+
+    pub fn default_type(&self) -> Type {
+        match self {
+            Self::Number(s, _) => {
+                if s.contains(".") {
+                    Type::Primitive {
+                        floating: true,
+                        signed: true,
+                        size: 8,
+                        mutable: false,
+                        span: Span::default(),
+                    }
+                } else if s.contains("-") {
+                    Type::Primitive {
+                        floating: false,
+                        signed: true,
+                        size: 0,
+                        mutable: false,
+                        span: Span::default(),
+                    }
+                } else {
+                    Type::Primitive {
+                        floating: false,
+                        signed: false,
+                        size: 0,
+                        mutable: false,
+                        span: Span::default(),
+                    }
+                }
+            }
+            Self::String(_, _) => Type::Named {
+                name: Ident::User {
+                    val: "String".to_string(),
+                    span: Span::default(),
+                },
+                mutable: false,
+                span: Span::default(),
+            },
+            Self::Char(_, _) => Type::Char {
+                span: Span::default(),
+                mutable: false,
+            },
         }
     }
 }

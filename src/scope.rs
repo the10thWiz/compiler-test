@@ -218,14 +218,13 @@ impl Scope {
     }
 
     /// Assigns the result of expr to location
-    pub fn parse_expresion(&mut self, expr: Expression, mut ty_hint: Option<Type>) -> Location {
-        let mut location = self.cur.local(&Type::empty(), None);
-        let src = match expr {
+    pub fn parse_expresion(&mut self, expr: Expression, ty_hint: Option<Type>) -> Location {
+        match expr {
             Expression::FnCall(fn_call, _s) => fn_call.to_asm(self),
             Expression::Value(lit) => {
                 let loc = self
                     .cur
-                    .local(ty_hint.as_ref().unwrap_or(&Type::empty()), Some(lit));
+                    .local(ty_hint.as_ref().unwrap_or(&lit.default_type()), Some(lit));
                 loc
             }
             Expression::Variable(v) => self.lookup(&v).cloned().expect("Variable not defined"),
@@ -244,16 +243,7 @@ impl Scope {
                 loc
             }
             Expression::Tuple(_, _) => todo!(),
-        };
-        //todo!("Eval: ?");
-        let ty = if let Some(ty) = ty_hint {
-            ty
-        } else {
-            src.ty().clone()
-        };
-        location.set_type(ty.clone());
-        self.cur.mov(src, location.clone());
-        location
+        }
     }
 
     pub fn from_statements(iter: impl Iterator<Item = Statement>) -> Self {

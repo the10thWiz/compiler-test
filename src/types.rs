@@ -264,25 +264,25 @@ impl Type {
 fn parts_to_str(floating: bool, signed: bool, size: usize) -> Cow<'static, str> {
     if floating {
         match size {
-            64 => Cow::Borrowed("f64"),
-            32 => Cow::Borrowed("f32"),
+            8 => Cow::Borrowed("f64"),
+            4 => Cow::Borrowed("f32"),
             _ => panic!("Invalid type"),
         }
     } else if signed {
         match size {
-            64 => Cow::Borrowed("i64"),
-            32 => Cow::Borrowed("i32"),
-            16 => Cow::Borrowed("i16"),
-            8 => Cow::Borrowed("i8"),
+            8 => Cow::Borrowed("i64"),
+            4 => Cow::Borrowed("i32"),
+            2 => Cow::Borrowed("i16"),
+            1 => Cow::Borrowed("i8"),
             0 => Cow::Borrowed("isize"),
             _ => panic!("Invalid type"),
         }
     } else {
         match size {
-            64 => Cow::Borrowed("u64"),
-            32 => Cow::Borrowed("u32"),
-            16 => Cow::Borrowed("u16"),
-            8 => Cow::Borrowed("u8"),
+            8 => Cow::Borrowed("u64"),
+            4 => Cow::Borrowed("u32"),
+            2 => Cow::Borrowed("u16"),
+            1 => Cow::Borrowed("u8"),
             0 => Cow::Borrowed("usize"),
             _ => panic!("Invalid type"),
         }
